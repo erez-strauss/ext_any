@@ -1,0 +1,53 @@
+{
+  "version": 8,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "Debug Build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+      "CMAKE_BUILD_TYPE": "Debug",
+  	  "CMAKE_CXX_FLAGS_DEBUG": "-O1 -W -Wall -Wextra -Wconversion -pedantic -ggdb3"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release Build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+	"CMAKE_CXX_FLAGS_RELEASE": "-O3 -W -Wall -Wextra -Wconversion -pedantic -ggdb3"
+      }
+    },
+    {
+      "name": "g++-sanitize",
+      "displayName": "Debug Build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+	"CMAKE_CXX_FLAGS_DEBUG": "-O1 -ggdb3 -fsanitize=address,undefined,float-divide-by-zero -fno-omit-frame-pointer"
+      }
+    },
+    {
+      "name": "clang-sanitize",
+      "displayName": "Debug Build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++-18",
+	"CMAKE_CXX_FLAGS_DEBUG": "-O1 -ggdb3 -fsanitize=address,undefined,float-divide-by-zero -fno-omit-frame-pointer"
+      }
+    }
+
+  ]
+}
+
