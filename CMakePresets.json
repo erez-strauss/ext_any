@@ -13,7 +13,7 @@
       "binaryDir": "${sourceDir}/build/debug",
       "cacheVariables": {
       "CMAKE_BUILD_TYPE": "Debug",
-  	  "CMAKE_CXX_FLAGS_DEBUG": "-O1 -W -Wall -Wextra -Wconversion -pedantic -ggdb3"
+  	  "CMAKE_CXX_FLAGS_DEBUG": "-O1 -W -Wall -Wextra -Wconversion -pedantic -ggdb3 -Werror"
       }
     },
     {
@@ -23,7 +23,7 @@
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-	"CMAKE_CXX_FLAGS_RELEASE": "-O3 -W -Wall -Wextra -Wconversion -pedantic -ggdb3"
+	"CMAKE_CXX_FLAGS_RELEASE": "-O3 -W -Wall -Wextra -Wconversion -pedantic -ggdb3 -Werror"
       }
     },
     {
@@ -33,7 +33,7 @@
       "binaryDir": "${sourceDir}/build/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-	"CMAKE_CXX_FLAGS_DEBUG": "-O1 -ggdb3 -fsanitize=address,undefined,float-divide-by-zero -fno-omit-frame-pointer"
+	"CMAKE_CXX_FLAGS_DEBUG": "-O1 -ggdb3 -fsanitize=address,undefined,float-divide-by-zero -fno-omit-frame-pointer -Werror"
       }
     },
     {
@@ -44,7 +44,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_CXX_COMPILER": "/usr/bin/clang++-18",
-	"CMAKE_CXX_FLAGS_DEBUG": "-O1 -ggdb3 -fsanitize=address,undefined,float-divide-by-zero -fno-omit-frame-pointer"
+	"CMAKE_CXX_FLAGS_DEBUG": "-O1 -ggdb3 -fsanitize=address,undefined,float-divide-by-zero -fno-omit-frame-pointer -Werror"
       }
     }
 
