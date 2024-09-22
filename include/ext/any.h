@@ -493,7 +493,8 @@ public:
         typename A::any_properties properties{};
         properties._inplace_flag          = A::template is_inplace<T>();
         properties._is_move_constructible = std::is_move_constructible_v<T>;
-        properties._is_copy_constructible = std::is_copy_constructible_v<T>, properties._type_info = &typeid(T);
+        properties._is_copy_constructible = std::is_copy_constructible_v<T>;
+        properties._type_info = &typeid(T);
         properties._type_index    = std::type_index(typeid(T));
         properties._src_type_name = src_type_name<T>();
         properties._value_size    = sizeof(T);
