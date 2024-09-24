@@ -54,11 +54,13 @@ public:
 
     template<typename T>
     T& any_cast(any1& a);
+
     template<typename T>
     const T& any_cast(const any1& a);
 
     template<typename T>
     T& any_cast(any1* a);
+
     template<typename T>
     const T& any_cast(const any1* a);
 };

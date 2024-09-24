@@ -397,28 +397,28 @@ public:
     // std::any_cast is returning T a copy of the stored item, the any_cast below returns T& to the stored item.
 
     template<typename T>
-    friend T& any_cast(any& a)
+    [[nodiscard]] friend T& any_cast(any& a)
     {
         if (!a.has_value() || *a._properties->_type_info != typeid(T)) throw std::bad_any_cast{};
         return a.data<T>();
     }
 
     template<typename T>
-    friend const T& any_cast(const any& a)
+    [[nodiscard]] friend const T& any_cast(const any& a)
     {
         if (!a.has_value() || *a._properties->_type_info != typeid(T)) throw std::bad_any_cast{};
         return &a.data<T>();
     }
 
     template<typename T>
-    friend T* any_cast(any* ap)
+    [[nodiscard]] friend T* any_cast(any* ap)
     {
         if (!ap->has_value() || *ap->_properties->_type_info != typeid(T)) return nullptr;
         return &ap->data<T>();
     }
 
     template<typename T>
-    friend const T* any_cast(const any* ap)
+    [[nodiscard]] friend const T* any_cast(const any* ap)
     {
         if (!ap->has_value() || *ap->_properties->_type_info != typeid(T)) return nullptr;
         return &ap->data<T>();
@@ -494,11 +494,11 @@ public:
         properties._inplace_flag          = A::template is_inplace<T>();
         properties._is_move_constructible = std::is_move_constructible_v<T>;
         properties._is_copy_constructible = std::is_copy_constructible_v<T>;
-        properties._type_info = &typeid(T);
-        properties._type_index    = std::type_index(typeid(T));
-        properties._src_type_name = src_type_name<T>();
-        properties._value_size    = sizeof(T);
-        properties._destroy       = [](A& a) -> void {
+        properties._type_info             = &typeid(T);
+        properties._type_index            = std::type_index(typeid(T));
+        properties._src_type_name         = src_type_name<T>();
+        properties._value_size            = sizeof(T);
+        properties._destroy               = [](A& a) -> void {
             T* p = &a.template data<T>();
             p->T::~T();
         };
@@ -588,21 +588,22 @@ struct af_streamed<any<N, Features...>>
     struct extend_properties
     {
         extend_properties() = default;
-        void (*_ostream)(std::ostream&, const A&){nullptr};
+        std::ostream& (*_ostream)(std::ostream&, const A&){nullptr};
     };
 
     template<typename T>
     static void construct_extend_properties(auto& prop)
     {
-        prop._ostream = [](std::ostream& os, const A& a) -> void {
+        prop._ostream = [](std::ostream& os, const A& a) -> std::ostream& {
             if constexpr (requires(T t) { os << t; })
             {
                 if (a.has_value())
                 {
                     const T& value{a.template data<T>()};
-                    os << value;
+                    return os << value;
                 }
             }
+            return os;
         };
     }
 
@@ -610,7 +611,7 @@ struct af_streamed<any<N, Features...>>
     {
         if (a.has_value())
         {
-            a.properties()->_ostream(os, a);
+            return a.properties()->_ostream(os, a);
         }
         return os;
     }
@@ -625,7 +626,7 @@ struct af_strict_streamed<any<N, Features...>>
     using A = any<N, Features...>;
     struct extend_properties
     {
-        void (*_strict_ostream)(std::ostream&, const A&);
+        std::ostream& (*_strict_ostream)(std::ostream&, const A&);
     };
 
     template<typename T>
@@ -633,12 +634,13 @@ struct af_strict_streamed<any<N, Features...>>
         requires requires(T t) { std::cout << t; }
     {
         static_assert(requires(T t) { std::cout << t; }, "af_strict_streamed requires type supporting 'operator<< T{}");
-        prop._strict_ostream = [](std::ostream& os, const A& a) -> void {
+        prop._strict_ostream = [](std::ostream& os, const A& a) -> std::ostream& {
             if (a.has_value())
             {
                 const T& value{a.template data<T>()};
-                os << value;
+                return os << value;
             }
+            return os;
         };
     }
 
@@ -646,7 +648,7 @@ struct af_strict_streamed<any<N, Features...>>
     {
         if (a.has_value())
         {
-            a.properties()->_strict_ostream(os, a);
+            return a.properties()->_strict_ostream(os, a);
         }
         return os;
     }
@@ -848,10 +850,7 @@ struct af_strict_add<any<N, Features...>>
     {
         static_assert(requires(T ta) { std::hash<T>{}(ta); }, "af_strict_hash requires type supporting hash{}(a)");
 
-        prop._strict_add = [](const A& a, const A& b) -> A {
-            A r(a.template data<T>() + b.template data<T>());
-            return r;
-        };
+        prop._strict_add = [](const A& a, const A& b) -> A { return A(a.template data<T>() + b.template data<T>()); };
     }
 
     friend A operator+(const A& a, const A& b)
