@@ -117,8 +117,10 @@ void test_standard_any_features()
         }
         auto p0 = any_cast<int>(&a0);
         EXPECT_EQ(p0, nullptr);
+#ifdef ANY_RTTI_ON
         EXPECT_EQ(std::type_index(typeid(void)), std::type_index(a0.type()));
         EXPECT_NE(std::type_index(typeid(int)), std::type_index(a0.type()));
+#endif
     }
 
     a0 = 3;
@@ -137,7 +139,9 @@ void test_standard_any_features()
         }
         auto p0 = any_cast<int>(&a0);
         EXPECT_EQ(*p0, 3);
+#ifdef ANY_RTTI_ON
         EXPECT_EQ(std::type_index(typeid(int)), std::type_index(a0.type()));
+#endif
     }
 
     struct Data
@@ -151,8 +155,10 @@ void test_standard_any_features()
     {
         std::cout << "Properties:\n" << *a0.properties() << '\n';
     }
+#ifdef ANY_RTTI_ON
     EXPECT_EQ(std::type_index(typeid(Data)), std::type_index(a0.type()));
     EXPECT_NE(std::type_index(typeid(int)), std::type_index(a0.type()));
+#endif
     const auto& a2{any_cast<Data>(a0)};
     EXPECT_EQ(a2.ldata[0], 1);
     EXPECT_EQ(a2.ldata[3], 4);
@@ -165,7 +171,9 @@ void test_standard_any_features()
         {
             std::cout << "Got excepted exception3: " << e.what() << '\n';
         }
+#ifdef ANY_RTTI_ON
         EXPECT_EQ(std::type_index(typeid(Data)), std::type_index(a0.type()));
+#endif
     }
 
     A a4{a0};             // copy constructor

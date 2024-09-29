@@ -27,25 +27,30 @@ namespace ext {
 static constexpr const bool rtti_available{
 #if defined(_MSC_VER) || defined(_WIN32)
 #if defined(_CPPRTTI)
+#define ANY_RTTI_ON 1
     true
 #else
+#define ANY_RTTI_OFF 1
     false
 #endif
 #elif defined(__clang__)
 #if __has_feature(cxx_rtti)
+#define ANY_RTTI_ON 1
     true
 #else
+#define ANY_RTTI_OFF 1
     false
 #endif
 #elif defined(__GNUC__)
-#if defined(__GXX_RTTI)
+#if defined(__GXX_RTTI) && __GXX_RTTI != 0
+#define ANY_RTTI_ON 1
     true
 #else
+#define ANY_RTTI_OFF 1
     false
 #endif
 #else
-#warning "unknown environment"
-    true
+#error "unknown environment"
 #endif
 };
 
@@ -106,13 +111,15 @@ public:
     class alignas(64) any_properties final : public Features<A>::extend_properties...
     {
     public:
-        bool                  _inplace_flag{false};  // Is SOO active for this type?
-        bool                  _is_move_constructible{false};
-        bool                  _is_copy_constructible{false};
+        bool _inplace_flag{false};  // Is SOO active for this type?
+        bool _is_move_constructible{false};
+        bool _is_copy_constructible{false};
+#ifdef ANY_RTTI_ON
         const std::type_info* _type_info{&typeid(void)};
         std::type_index       _type_index{std::type_index(typeid(void))};
-        std::string_view      _src_type_name{""};
-        size_t                _value_size{0};
+#endif
+        std::string_view _src_type_name{""};
+        size_t           _value_size{0};
 
         void (*_destroy)(A&){nullptr};
         void (*_delete)(A&){nullptr};
@@ -127,8 +134,10 @@ public:
             return os << "\nAny: " << ext::src_type_name<A>()
                << "\n   any::operations<>:" << (void *) &prop
                << "\n   type name: " << prop._src_type_name
+#ifdef ANY_RTTI_ON
                << "\n   typeinfo name: " << prop._type_info->name()
                << "\n   type_index hash: " << prop._type_index.hash_code() // std::type_index(prop._type_info)
+#endif
                << "\n   value size: " << prop._value_size
                << "\n   inplace: " << prop._inplace_flag
                << "\n   move constructible: " << prop._is_move_constructible
@@ -402,7 +411,7 @@ public:
              typename DU = std::enable_if_t<!std::is_same_v<any<N>, std::remove_cvref_t<U>>, std::remove_cvref_t<U>>>
     constexpr any& operator=(U& value)  // Check that it is / isn't an Any.
     {
-        if (has_value() && *_properties->_type_info == typeid(DU))
+        if (has_value() && _properties == &any_properties_t_data_type<DU, A>::instance)  //->_type_info == typeid(DU))
         {
             _properties->_assign_clone(*this, value);
             return *this;
@@ -423,7 +432,7 @@ public:
     template<typename U, typename DU = std::enable_if_t<!std::is_same_v<any<N>, std::decay_t<U>>, U>>
     constexpr any& operator=(U&& value)
     {
-        if (has_value() && *_properties->_type_info == typeid(DU))
+        if (has_value() && _properties == &any_properties_t_data_type<DU, A>::instance)  //->_type_info == typeid(DU))
         {
             _properties->_assign_move(*this, static_cast<void*>(&value));
             return *this;
@@ -456,44 +465,107 @@ public:
     template<typename T>
     [[nodiscard]] constexpr friend T& any_cast(any& a)
     {
-        if (!a.has_value() || *a._properties->_type_info != typeid(T)) throw std::bad_any_cast{};
+#ifdef ANY_RTTI_ON
+        if (!a.has_value() || *a._properties->_type_info != typeid(T))
+        {
+            throw std::bad_any_cast{};
+        }
+#else
+        if (!a.has_value() || a.properties() != &any_properties_t_data_type<std::decay_t<T>, A>::instance)
+        {
+            throw std::bad_any_cast{};
+        }
+
+#endif
         return a.data<T>();
     }
 
     template<typename T>
     [[nodiscard]] constexpr friend const T& any_cast(const any& a)
     {
-        if constexpr (rtti_available)
+#ifdef ANY_RTTI_ON
+        if (!a.has_value() || *a._properties->_type_info != typeid(T))
         {
-            if (!a.has_value() || *a._properties->_type_info != typeid(T)) throw std::bad_any_cast{};
+            throw std::bad_any_cast{};
         }
-        else
+#else
+        if (!a.has_value() || a.properties() != &any_properties_t_data_type<std::decay_t<T>, A>::instance)
         {
-            if (!a.has_value() || a.properties() != &any_properties_t_data_type<std::decay_t<T>, A>::instance)
-                throw std::bad_any_cast{};
+            throw std::bad_any_cast{};
         }
+#endif
         return a.data<T>();
     }
+    // The following code does not work as the access to typeid is happening before the if constexpr.
+    //  Is it a compilers bug?
+    //        if constexpr (rtti_available)
+    //        {
+    //            if (!a.has_value() || *a._properties->_type_info != typeid(T))
+    //            {
+    //                throw std::bad_any_cast{};
+    //            }
+    //        }
+    //        else
+    //        {
+    //            if (!a.has_value() || a.properties() != &any_properties_t_data_type<std::decay_t<T>, A>::instance)
+    //            {
+    //                throw std::bad_any_cast{};
+    //            }
+    //        }
+    //        return a.data<T>();
 
     template<typename T>
     [[nodiscard]] constexpr friend T* any_cast(any* ap)
     {
-        if (!ap->has_value() || *ap->_properties->_type_info != typeid(T)) return nullptr;
+#ifdef ANY_RTTI_ON
+        if (!ap->has_value() || *ap->_properties->_type_info != typeid(T))
+        {
+            return nullptr;
+        }
+#else
+        if (!ap->has_value() || ap->properties() != &any_properties_t_data_type<std::decay_t<T>, A>::instance)
+        {
+            return nullptr;
+        }
+#endif
+        // Nicer code, but does not compile :-)
+        //        if constexpr (rtti_available)
+        //        {
+        //            if (!ap->has_value() || *ap->_properties->_type_info != typeid(T)) return nullptr;
+        //        }
+        //        else
+        //        {
+        //            if (!ap->has_value() || ap->properties() != &any_properties_t_data_type<std::decay_t<T>,
+        //            A>::instance)
+        //                return nullptr;
+        //        }
         return &ap->data<T>();
     }
 
     template<typename T>
     [[nodiscard]] constexpr friend const T* any_cast(const any* ap)
     {
-        if (!ap->has_value() || *ap->_properties->_type_info != typeid(T)) return nullptr;
+#ifdef ANY_RTTI_ON
+        if (!ap->has_value() || *ap->_properties->_type_info != typeid(T))
+        {
+            return nullptr;
+        }
+#else
+        if (!ap->has_value() || ap->properties() != &any_properties_t_data_type<std::decay_t<T>, A>::instance)
+        {
+            return nullptr;
+        }
+#endif
         return &ap->data<T>();
     }
 
+#ifdef ANY_RTTI_ON
     [[nodiscard]] constexpr const std::type_info& type() const noexcept
     {
         if (has_value()) return *_properties->_type_info;
         return typeid(void);
     }
+#endif
 
     template<typename T, typename... Arg>
     T& emplace(Arg&&... args)
@@ -559,10 +631,12 @@ public:
         properties._inplace_flag          = A::template is_inplace<T>();
         properties._is_move_constructible = std::is_move_constructible_v<T>;
         properties._is_copy_constructible = std::is_copy_constructible_v<T>;
-        properties._type_info             = &typeid(T);
-        properties._type_index            = std::type_index(typeid(T));
-        properties._src_type_name         = src_type_name<T>();
-        properties._value_size            = sizeof(T);
+#ifdef ANY_RTTI_ON
+        properties._type_info  = &typeid(T);
+        properties._type_index = std::type_index(typeid(T));
+#endif
+        properties._src_type_name = src_type_name<T>();
+        properties._value_size    = sizeof(T);
 
         properties._destroy = +[](A& a) -> void {
             T* p = &a.template data<T>();
@@ -749,13 +823,13 @@ struct af_strict_less<any<N, Features...>>
     {
         if (lhs.has_value() && rhs.has_value())
         {
-            if (lhs.properties()->_type_info == rhs.properties()->_type_info)
+            if (lhs.properties() == rhs.properties())
             {
                 return lhs.properties()->_strict_less(lhs, rhs);
             }
             throw std::runtime_error("any operator less '<': with different types");
         }
-        throw std::runtime_error("no any value in operator less '<'");
+        throw std::runtime_error("empty ext::any value in operator less '<'");
     }
 };
 
@@ -794,7 +868,7 @@ struct af_strict_eq<any<N, Features...>>
             }
             throw std::runtime_error("any operator eq '==': with different types");
         }
-        throw std::runtime_error("no any value in operator eq '=='");
+        throw std::runtime_error("empy ext::any in operator eq '=='");
     }
 };
 
@@ -845,7 +919,7 @@ struct af_strict_hash<any<N, Features...>>
         auto self = static_cast<const A*>(this);
         if (!self->has_value())
         {
-            throw std::runtime_error("hash on ext::any without value");
+            throw std::runtime_error("hash on an empty ext::any");
         }
         return self->properties()->_strict_hash(*self);
     }
@@ -922,6 +996,7 @@ struct af_strict_add<any<N, Features...>>
 
     friend A operator+(const A& a, const A& b)
     {
+        // more relaxed version can be implemented, which accepts one empty any.
         if (!a.has_value() || !b.has_value() || a.properties() != b.properties())
         {
             throw std::runtime_error("operator+ ext::any without value or different types");

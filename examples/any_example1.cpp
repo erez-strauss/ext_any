@@ -1,8 +1,11 @@
-// This example code is a simplified baseic draft implementation of std::any
+// This example code is a simplified basic draft implementation of std::any
 //
 #include <any>  // for bad_type_cast exception.
+#include <ext/any.h>
 #include <iostream>
 // Simple example any step 1
+
+#ifdef ANY_RTTI_ON
 
 class any1;  // forward declaration
 
@@ -42,11 +45,16 @@ public:
     template<typename T>
     explicit any1(T&& value);
 
-    const std::type_info& type() const
+#ifdef ANY_RTTI_ON
+    const std::type_info& type() const  // requires (ext::rtti_available)
     {
-        if (properties_) return properties_->type_();
-        return typeid(void);
+        if constexpr (ext::rtti_available)
+        {
+            if (properties_) return properties_->type_();
+            return typeid(void);
+        }
     }
+#endif
     // any1& operator=(T&&) -- two cases, with any1 and non-any1.
 
     template<typename T>
@@ -69,9 +77,11 @@ template<typename T>
 class any_properties : public any_properties_base
 {
 public:
+#ifdef ANY_RTTI_ON
     const std::type_info& type_() const override { return typeid(T); }
-    void                  clone_(any1&, void*) const override {}
-    void                  destroy_(any1& a) const override
+#endif
+    void clone_(any1&, void*) const override {}
+    void destroy_(any1& a) const override
     {
         auto p = reinterpret_cast<T*>(a.data_ptr_);
         delete p;
@@ -123,3 +133,7 @@ int main()
     std::cout << "string: " << s0.type().name() << '\n';
     return 0;
 }
+#else
+// This example any works only when RTTI is available.
+int main() {}
+#endif
