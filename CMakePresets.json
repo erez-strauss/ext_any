@@ -46,8 +46,17 @@
         "CMAKE_CXX_COMPILER": "/usr/bin/clang++-18",
 	"CMAKE_CXX_FLAGS_DEBUG": "-O1 -ggdb3 -fsanitize=address,undefined,float-divide-by-zero -fno-omit-frame-pointer -Werror"
       }
+    },
+    {
+      "name": "no-rtti",
+      "displayName": "Debug Build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+      "CMAKE_BUILD_TYPE": "Debug",
+  	  "CMAKE_CXX_FLAGS_DEBUG": "-O3 -fno-rtti -W -Wall -Wextra -Wconversion -Wshadow -pedantic -ggdb3 -Werror"
+      }
     }
-
   ]
 }
 

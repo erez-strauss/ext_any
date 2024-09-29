@@ -8,6 +8,11 @@
 #include <unordered_map>
 #include <vector>
 
+TEST(ExtAny, SimpleTest)
+{
+    ext::any<8> ct_a(345);
+    EXPECT_EQ(any_cast<int>(ct_a), 345);
+}
 TEST(TestAny, Simplest)
 {
     ext::any<8> a0{};

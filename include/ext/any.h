@@ -18,10 +18,36 @@
 #include <string>
 #include <type_traits>
 #include <typeindex>
+#include <utility>
 
 #include "type_name.h"
 
 namespace ext {
+
+static constexpr const bool rtti_available{
+#if defined(_MSC_VER) || defined(_WIN32)
+#if defined(_CPPRTTI)
+    true
+#else
+    false
+#endif
+#elif defined(__clang__)
+#if __has_feature(cxx_rtti)
+    true
+#else
+    false
+#endif
+#elif defined(__GNUC__)
+#if defined(__GXX_RTTI)
+    true
+#else
+    false
+#endif
+#else
+#warning "unknown environment"
+    true
+#endif
+};
 
 // clang-format off
 // any_properties - The properties of an any<N,Fs...>. The Features based properties are gathered using inheritance.
@@ -35,14 +61,6 @@ template<size_t N, template<typename> class... Features>
 class any;
 template<typename T, typename A>
 class any_properties_t_data_type;
-
-// The any_type_tag<> is used as first argument for any<N> constructor - to specify the type we want, in case it is
-// different from the variable type provided to the constructor. Similar to std::in_place_type_t
-template<typename T>
-struct any_type_tag
-{
-    using type = T;
-};
 
 template<typename T>
 struct is_an_any;  // true_type for all any<N, ...> types, false_type otherwise.
@@ -95,31 +113,31 @@ public:
         std::type_index       _type_index{std::type_index(typeid(void))};
         std::string_view      _src_type_name{""};
         size_t                _value_size{0};
+
         void (*_destroy)(A&){nullptr};
         void (*_delete)(A&){nullptr};
         void (*_clone)(A&, const A&){nullptr};
         void (*_move)(A&, A&&){nullptr};
         void (*_assign_clone)(A&, const A&){nullptr};
         void (*_assign_move)(A&, void*){nullptr};
+
+        friend std::ostream& operator<<(std::ostream& os, const any_properties& prop)
+        {
+            // clang-format off
+            return os << "\nAny: " << ext::src_type_name<A>()
+               << "\n   any::operations<>:" << (void *) &prop
+               << "\n   type name: " << prop._src_type_name
+               << "\n   typeinfo name: " << prop._type_info->name()
+               << "\n   type_index hash: " << prop._type_index.hash_code() // std::type_index(prop._type_info)
+               << "\n   value size: " << prop._value_size
+               << "\n   inplace: " << prop._inplace_flag
+               << "\n   move constructible: " << prop._is_move_constructible
+               << "\n   copy constructible: " << prop._is_copy_constructible
+               << "\n--\n";
+            // clang-format on
+        }
     };
     friend class any_properties;
-
-    friend std::ostream& operator<<(std::ostream& os, const any_properties& prop)
-    {
-        // clang-format off
-        os << "\nAny: " << ext::src_type_name<A>()
-           << "\n   any::operations<>:" << (void *) &prop
-           << "\n   type name: " << prop._src_type_name
-           << "\n   typeinfo name: " << prop._type_info->name()
-           << "\n   type_index hash: " << prop._type_index.hash_code() // std::type_index(prop._type_info)
-           << "\n   value size: " << prop._value_size
-           << "\n   inplace: " << prop._inplace_flag
-           << "\n   move constructible: " << prop._is_move_constructible
-           << "\n   copy constructible: " << prop._is_copy_constructible
-           << "\n--\n";
-        // clang-format on
-        return os;
-    }
 
 public:
     template<typename T>
@@ -141,47 +159,47 @@ public:
     template<typename T>
     T& storage_inplace() noexcept
     {
-        return *(T*)&_storage;
+        return *reinterpret_cast<T*>(&_storage);
     }
     template<typename T>
     const T& storage_inplace() const noexcept
     {
-        return *(const T*)&_storage;
+        return *reinterpret_cast<const T*>(&_storage);
     }
 
     template<typename T>
-    T& storage_dynamic()
+    T& storage_dynamic() noexcept
     {
         return *reinterpret_cast<T*>(_pointer);
     }
     template<typename T>
-    const T& storage_dynamic() const
+    const T& storage_dynamic() const noexcept
     {
         return *reinterpret_cast<const T*>(_pointer);
     }
 
     template<typename T>
-    constexpr static bool is_inplace()
+    constexpr static bool is_inplace() noexcept
     {
         return sizeof(T) <= storage_size() && alignof(T) <= alignof(A);
     }
 
     template<typename T>
-    constexpr T& inplace_data() noexcept
+    T& inplace_data() noexcept
     {
         static_assert(is_inplace<T>(), "Something is wrong");
         return *reinterpret_cast<T*>(&this->_storage);
     }
 
     template<typename T>
-    constexpr const T& inplace_data() const noexcept
+    const T& inplace_data() const noexcept
     {
         static_assert(is_inplace<T>(), "Never use storage_inplace for too large types");
         return *reinterpret_cast<const T*>(&this->_storage);
     }
 
     template<typename T>
-    T& data()
+    T& data() noexcept
     {
         if constexpr (is_inplace<T>())
         {
@@ -194,7 +212,7 @@ public:
     }
 
     template<typename T>
-    const T& data() const
+    const T& data() const noexcept
     {
         if constexpr (is_inplace<T>())
         {
@@ -207,15 +225,15 @@ public:
     }
 
 public:
-    constexpr explicit any()
+    constexpr explicit any() noexcept
     {
         _properties = nullptr;
         clear_storage();
     }
 
-    any(const any& rhs)
+    constexpr any(const any& rhs)
     {
-        if (rhs.has_value())
+        if (rhs.has_value()) [[likely]]
         {
             _properties = rhs._properties;
             _properties->_clone(*this, rhs);
@@ -229,7 +247,7 @@ public:
 
     any(any&& rhs) noexcept
     {
-        if (rhs.has_value())
+        if (rhs.has_value()) [[likely]]
         {
             _properties = rhs._properties;
             _properties->_move(*this, std::move(rhs));
@@ -257,8 +275,10 @@ public:
         }
     }
 
-    template<typename U, typename DU = std::enable_if_t<!std::is_same_v<A, std::remove_cvref_t<U>>, U>>
+    template<typename U,
+             typename DU = std::enable_if_t<!std::is_same_v<A, std::remove_cvref_t<U>>, std::remove_cvref_t<U>>>
     explicit constexpr any(U&& value)
+        requires(!is_an_any_v<U> && !is_an_any_v<std::remove_cvref_t<U>>)
     {
         _properties = &any_properties_t_data_type<DU, A>::instance;
         if constexpr (is_inplace<DU>())
@@ -268,6 +288,43 @@ public:
         else
         {
             set_pointer<DU>(new DU(std::forward<U>(value)));
+        }
+    }
+
+    // #5 https://en.cppreference.com/w/cpp/utility/any/any
+    template<class T, class... Args>
+    explicit any(std::in_place_type_t<T>, Args&&... args)
+        requires(!is_an_any_v<std::decay_t<T>> && !is_an_any_v<std::remove_cvref_t<T>> &&
+                 std::is_constructible_v<std::decay_t<T>, Args...> && std::is_copy_constructible_v<std::decay_t<T>>)
+    {
+        using DT    = std::decay_t<T>;
+        _properties = &any_properties_t_data_type<DT, A>::instance;
+        if constexpr (is_inplace<DT>())
+        {
+            new (&inplace_data<DT>()) DT(std::forward<Args>(args)...);
+        }
+        else
+        {
+            set_pointer<DT>(new DT(std::forward<Args>(args)...));
+        }
+    }
+
+    // #6 https://en.cppreference.com/w/cpp/utility/any/any
+    template<class T, class U, class... Args>
+    explicit any(std::in_place_type_t<T>, std::initializer_list<U> il, Args&&... args)
+        requires(!is_an_any_v<std::decay_t<T>> && !is_an_any_v<std::remove_cvref_t<T>> &&
+                 std::is_constructible_v<std::decay_t<T>, std::initializer_list<U>&, Args...> &&
+                 std::is_copy_constructible_v<std::decay_t<T>>)
+    {
+        using DT    = std::decay_t<T>;
+        _properties = &any_properties_t_data_type<DT, A>::instance;
+        if constexpr (is_inplace<DT>())
+        {
+            new (&inplace_data<DT>()) DT(il, std::forward<Args>(args)...);
+        }
+        else
+        {
+            set_pointer<DT>(new DT(il, std::forward<Args>(args)...));
         }
     }
 
@@ -397,28 +454,36 @@ public:
     // std::any_cast is returning T a copy of the stored item, the any_cast below returns T& to the stored item.
 
     template<typename T>
-    [[nodiscard]] friend T& any_cast(any& a)
+    [[nodiscard]] constexpr friend T& any_cast(any& a)
     {
         if (!a.has_value() || *a._properties->_type_info != typeid(T)) throw std::bad_any_cast{};
         return a.data<T>();
     }
 
     template<typename T>
-    [[nodiscard]] friend const T& any_cast(const any& a)
+    [[nodiscard]] constexpr friend const T& any_cast(const any& a)
     {
-        if (!a.has_value() || *a._properties->_type_info != typeid(T)) throw std::bad_any_cast{};
-        return &a.data<T>();
+        if constexpr (rtti_available)
+        {
+            if (!a.has_value() || *a._properties->_type_info != typeid(T)) throw std::bad_any_cast{};
+        }
+        else
+        {
+            if (!a.has_value() || a.properties() != &any_properties_t_data_type<std::decay_t<T>, A>::instance)
+                throw std::bad_any_cast{};
+        }
+        return a.data<T>();
     }
 
     template<typename T>
-    [[nodiscard]] friend T* any_cast(any* ap)
+    [[nodiscard]] constexpr friend T* any_cast(any* ap)
     {
         if (!ap->has_value() || *ap->_properties->_type_info != typeid(T)) return nullptr;
         return &ap->data<T>();
     }
 
     template<typename T>
-    [[nodiscard]] friend const T* any_cast(const any* ap)
+    [[nodiscard]] constexpr friend const T* any_cast(const any* ap)
     {
         if (!ap->has_value() || *ap->_properties->_type_info != typeid(T)) return nullptr;
         return &ap->data<T>();
@@ -498,11 +563,12 @@ public:
         properties._type_index            = std::type_index(typeid(T));
         properties._src_type_name         = src_type_name<T>();
         properties._value_size            = sizeof(T);
-        properties._destroy               = [](A& a) -> void {
+
+        properties._destroy = +[](A& a) -> void {
             T* p = &a.template data<T>();
             p->T::~T();
         };
-        properties._delete = [](A& a) -> void {
+        properties._delete = +[](A& a) -> void {
             if constexpr (A::template is_inplace<T>())
             {
                 (&a.template inplace_data<T>())->T::~T();
@@ -514,7 +580,7 @@ public:
                 a.template set_pointer<void>(nullptr);
             }
         };
-        properties._clone = [](A& a, const A& b) -> void {
+        properties._clone = +[](A& a, const A& b) -> void {
             if constexpr (!std::is_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
             {
                 throw std::runtime_error("trying to clone non-copyable type");
@@ -532,7 +598,7 @@ public:
                 }
             }
         };
-        properties._move = [](A& lhs, A&& rhs) -> void {
+        properties._move = +[](A& lhs, A&& rhs) -> void {
             if constexpr (A::template is_inplace<T>())
             {
                 new (&lhs.template inplace_data<T>()) T(std::move(rhs.template inplace_data<T>()));
@@ -545,7 +611,7 @@ public:
                 rhs._properties = nullptr;
             }
         };
-        properties._assign_clone = [](A& a, const A& b) -> void {
+        properties._assign_clone = +[](A& a, const A& b) -> void {
             if constexpr (A::template is_inplace<T>())
             {
                 a.template inplace_data<T>() = b.template inplace_data<T>();
@@ -557,7 +623,7 @@ public:
                 *ap = *bp;
             }
         };
-        properties._assign_move = [](A& a, void* bvp) -> void {
+        properties._assign_move = +[](A& a, void* bvp) -> void {
             if constexpr (A::template is_inplace<T>())
             {
                 a.template inplace_data<T>() = std::move(*reinterpret_cast<T*>(bvp));
@@ -594,7 +660,7 @@ struct af_streamed<any<N, Features...>>
     template<typename T>
     static void construct_extend_properties(auto& prop)
     {
-        prop._ostream = [](std::ostream& os, const A& a) -> std::ostream& {
+        prop._ostream = +[](std::ostream& os, const A& a) -> std::ostream& {
             if constexpr (requires(T t) { os << t; })
             {
                 if (a.has_value())
@@ -634,7 +700,7 @@ struct af_strict_streamed<any<N, Features...>>
         requires requires(T t) { std::cout << t; }
     {
         static_assert(requires(T t) { std::cout << t; }, "af_strict_streamed requires type supporting 'operator<< T{}");
-        prop._strict_ostream = [](std::ostream& os, const A& a) -> std::ostream& {
+        prop._strict_ostream = +[](std::ostream& os, const A& a) -> std::ostream& {
             if (a.has_value())
             {
                 const T& value{a.template data<T>()};
@@ -672,7 +738,7 @@ struct af_strict_less<any<N, Features...>>
     {
         static_assert(requires(T ta, T tb) { ta < tb; }, "af_strict_less requires type supporting 'a < b' compare");
 
-        prop._strict_less = [](const A& a, const A& b) -> bool {
+        prop._strict_less = +[](const A& a, const A& b) -> bool {
             const T& a_value{a.template data<T>()};
             const T& b_value{b.template data<T>()};
             return a_value < b_value;
@@ -711,7 +777,7 @@ struct af_strict_eq<any<N, Features...>>
     {
         static_assert(requires(T ta, T tb) { ta == tb; }, "af_strict_eq requires type supporting 'a == b' compare");
 
-        prop._strict_eq = [](const A& a, const A& b) -> bool {
+        prop._strict_eq = +[](const A& a, const A& b) -> bool {
             const T& a_value{a.template data<T>()};
             const T& b_value{b.template data<T>()};
             return a_value == b_value;
@@ -768,7 +834,7 @@ struct af_strict_hash<any<N, Features...>>
     {
         static_assert(requires(T ta) { std::hash<T>{}(ta); }, "af_strict_hash requires type supporting hash{}(a)");
 
-        prop._strict_hash = [](const A& a) -> uint64_t {
+        prop._strict_hash = +[](const A& a) -> uint64_t {
             const T& value{a.template data<T>()};
             return std::hash<T>{}(value);
         };
@@ -813,6 +879,7 @@ struct af_variant
 template<typename T>
 struct af_func;
 
+// TODO: Complete the Implementation.
 template<size_t N, template<typename> class... Features>
 struct af_func<any<N, Features...>>
 {
@@ -850,7 +917,7 @@ struct af_strict_add<any<N, Features...>>
     {
         static_assert(requires(T ta) { std::hash<T>{}(ta); }, "af_strict_hash requires type supporting hash{}(a)");
 
-        prop._strict_add = [](const A& a, const A& b) -> A { return A(a.template data<T>() + b.template data<T>()); };
+        prop._strict_add = +[](const A& a, const A& b) -> A { return A(a.template data<T>() + b.template data<T>()); };
     }
 
     friend A operator+(const A& a, const A& b)
