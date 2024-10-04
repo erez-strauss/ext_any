@@ -103,7 +103,7 @@ public:
     {
         if constexpr (sizeof...(Features) > 0)
         {
-            return std::max({(size_t)N, required_size<Features<A>>()...});
+            return std::max({N, required_size<Features<A>>()...});
         }
         return N;
     }
@@ -152,39 +152,39 @@ public:
     template<typename T>
     T* get_pointer()
     {
-        return reinterpret_cast<T*>(_pointer);
+        return std::bit_cast<T*>(_pointer);
     }
     template<typename T>
     const T* get_pointer() const
     {
-        return reinterpret_cast<const T*>(_pointer);
+        return std::bit_cast<const T*>(_pointer);
     }
     template<typename T>
     void set_pointer(T* value)
     {
-        _pointer = reinterpret_cast<void*>(value);
+        _pointer = std::bit_cast<void*>(value);
     }
 
     template<typename T>
     T& storage_inplace() noexcept
     {
-        return *reinterpret_cast<T*>(&_storage);
+        return *std::bit_cast<T*>(&_storage);
     }
     template<typename T>
     const T& storage_inplace() const noexcept
     {
-        return *reinterpret_cast<const T*>(&_storage);
+        return *std::bit_cast<const T*>(&_storage);
     }
 
     template<typename T>
     T& storage_dynamic() noexcept
     {
-        return *reinterpret_cast<T*>(_pointer);
+        return *std::bit_cast<T*>(_pointer);
     }
     template<typename T>
     const T& storage_dynamic() const noexcept
     {
-        return *reinterpret_cast<const T*>(_pointer);
+        return *std::bit_cast<const T*>(_pointer);
     }
 
     template<typename T>
@@ -197,14 +197,14 @@ public:
     T& inplace_data() noexcept
     {
         static_assert(is_inplace<T>(), "Something is wrong");
-        return *reinterpret_cast<T*>(&this->_storage);
+        return *std::bit_cast<T*>(&this->_storage);
     }
 
     template<typename T>
     const T& inplace_data() const noexcept
     {
         static_assert(is_inplace<T>(), "Never use storage_inplace for too large types");
-        return *reinterpret_cast<const T*>(&this->_storage);
+        return *std::bit_cast<const T*>(&this->_storage);
     }
 
     template<typename T>
@@ -292,7 +292,8 @@ public:
         _properties = &any_properties_t_data_type<DU, A>::instance;
         if constexpr (is_inplace<DU>())
         {
-            new (&inplace_data<DU>()) DU(std::forward<U>(value));
+            // new (&inplace_data<DU>()) DU(std::forward<U>(value));
+            std::construct_at(std::addressof(inplace_data<DU>()), std::forward<U>(value));
         }
         else
         {
@@ -515,7 +516,7 @@ public:
     //        return a.data<T>();
 
     template<typename T>
-    [[nodiscard]] constexpr friend T* any_cast(any* ap)
+    [[nodiscard]] constexpr friend T* any_cast(any* ap) noexcept
     {
 #ifdef ANY_RTTI_ON
         if (!ap->has_value() || *ap->_properties->_type_info != typeid(T))
@@ -543,7 +544,7 @@ public:
     }
 
     template<typename T>
-    [[nodiscard]] constexpr friend const T* any_cast(const any* ap)
+    [[nodiscard]] constexpr friend const T* any_cast(const any* ap) noexcept
     {
 #ifdef ANY_RTTI_ON
         if (!ap->has_value() || *ap->_properties->_type_info != typeid(T))
@@ -692,20 +693,20 @@ public:
             }
             else
             {
-                auto& ap{*reinterpret_cast<T**>(&a._pointer)};
-                auto& bp{*reinterpret_cast<T* const*>(&b._pointer)};
+                auto& ap{*std::bit_cast<T**>(&a._pointer)};
+                auto& bp{*std::bit_cast<T* const*>(&b._pointer)};
                 *ap = *bp;
             }
         };
         properties._assign_move = +[](A& a, void* bvp) -> void {
             if constexpr (A::template is_inplace<T>())
             {
-                a.template inplace_data<T>() = std::move(*reinterpret_cast<T*>(bvp));
+                a.template inplace_data<T>() = std::move(*std::bit_cast<T*>(bvp));
             }
             else
             {
-                auto ap{*reinterpret_cast<T**>(&a._pointer)};
-                auto bp{reinterpret_cast<T*>(bvp)};
+                auto ap{*std::bit_cast<T**>(&a._pointer)};
+                auto bp{std::bit_cast<T*>(bvp)};
                 *ap = std::move(*bp);
             }
         };
